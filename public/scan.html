@@ -1,0 +1,7 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Marking attendance</title><link rel="stylesheet" href="/style.css"></head><body>
+<div class="login" style="text-align:center"><div class="card"><h1 id="t">Marking your attendance…</h1><p id="m" class="mute"></p><p><a href="/student.html"><button class="alt" type="button">Go to my classes</button></a></p></div></div>
+<script src="/common.js"></script><script>
+(async()=>{const r=await fetch('/api/s/attend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:location.pathname.split('/a/')[1]})});
+const j=await r.json().catch(()=>({}));if(r.status===401)return location.href='/?next='+encodeURIComponent(location.pathname);
+$('#t').textContent=r.ok?(j.status==='Late'?'Marked late':'You are marked present'):'Not marked';$('#t').style.color=r.ok?'var(--ok)':'var(--bad)';$('#m').textContent=j.message||j.error})();
+</script></body></html>

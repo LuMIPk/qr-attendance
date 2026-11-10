@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My classes – QR Attendance</title><link rel="stylesheet" href="/style.css"></head><body>
+<header class="top"><h1 id="who">Loading…<small id="roll"></small></h1><button class="alt" onclick="logout()">Log out</button></header>
+<main>
+<section><h2>Attendance overview</h2><div id="chart" class="mute"></div></section>
+<h2 style="margin:20px 0 12px">My classes</h2><div id="cls" class="grid"></div>
+<section style="margin-top:16px"><details><summary style="cursor:pointer;font-weight:600">Change PIN</summary><form id="pf" class="row" style="margin-top:12px"><label>Current PIN<input id="op" type="password" inputmode="numeric" required></label><label>New PIN (4–8 digits)<input id="np" type="password" inputmode="numeric" required></label><button>Save PIN</button></form></details></section>
+</main>
+<dialog id="hd"><h2 id="ht"></h2><div class="wrap" style="max-height:55vh"><table><thead><tr><th>Date</th><th>Time</th><th>Status</th></tr></thead><tbody id="hb"></tbody></table></div><p><button class="alt" onclick="$('#hd').close()">Close</button></p></dialog>
+<dialog id="sd"><h2>Scan QR code</h2><video id="v" playsinline muted></video><p id="sm" class="mute"></p><p><button class="alt" onclick="stopScan()">Cancel</button></p></dialog>
+<script src="/common.js"></script><script>
+let list=[],stream,timer;
+async function load(){const m=await api('/api/me');if(m.role!=='student')return location.href='/';$('#who').firstChild.textContent=m.name;$('#roll').textContent=m.roll;
+ list=await api('/api/s/classes');
+ $('#chart').innerHTML=list.length?list.map(c=>`<div class="row" style="margin-bottom:8px;align-items:center"><span style="width:90px"><b>${esc(c.code)}</b></span><div style="flex:1;min-width:120px">${bar(c.pct??0)}</div><span style="width:56px;text-align:right">${c.pct==null?'–':c.pct+'%'}</span></div>`).join(''):'You are not enrolled in any class yet. Ask your teacher.';
+ $('#cls').innerHTML=list.map(c=>`<div class="card"><div class="row" style="justify-content:space-between;align-items:start"><div><b>${esc(c.code)}</b><div>${esc(c.name)}</div><div class="mute" style="font-size:.85rem">${esc(timing(c))}</div></div>${c.open?'<span class="chip ok">Session open</span>':''}</div>
+ <p class="big" style="margin:14px 0 6px;color:${c.low?'var(--bad)':'var(--ink)'}">${c.pct==null?'–':c.pct+'%'}</p>${bar(c.pct??0)}
+ <p class="mute" style="margin:6px 0">${c.present} of ${c.total} classes attended</p>
+ ${c.low?`<p class="chip bad">Below 75%: attend the next ${c.mustAttend} in a row</p>`:c.canMiss!=null?`<p class="chip ok">You can miss ${c.canMiss} more and stay above 75%</p>`:''}
+ <div class="row" style="margin-top:10px"><button onclick="openScan()">Scan QR</button><button class="alt" onclick="hist(${c.id})">History</button></div></div>`).join('')}
+async function hist(id){const c=list.find(x=>x.id===id),h=await api(`/api/s/classes/${id}/history`);$('#ht').textContent=`${c.code} history`;
+ $('#hb').innerHTML=h.map(r=>`<tr><td>${r.date}</td><td>${r.start_time}</td><td class="${r.status}">${r.status}</td></tr>`).join('')||'<tr><td colspan=3>No sessions yet.</td></tr>';$('#hd').showModal()}
+$('#pf').onsubmit=act(async()=>{await api('/api/s/pin','POST',{old:$('#op').value,new:$('#np').value});$('#pf').reset();toast('PIN changed')});
+function stopScan(){clearInterval(timer);stream?.getTracks().forEach(t=>t.stop());stream=null;$('#sd').close()}
+const loadJsQR=()=>new Promise((ok,no)=>{if(window.jsQR)return ok();const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';s.onload=ok;s.onerror=no;document.head.append(s)});
+async function openScan(){$('#sm').textContent='';$('#sd').showModal();
+ if(!window.isSecureContext||!navigator.mediaDevices)return $('#sm').textContent='In-app scanning needs HTTPS. Instead, scan the teacher’s QR code with your phone’s normal camera app. It opens this site and marks you present.';
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})}catch{return $('#sm').textContent='Camera is blocked. Allow camera access, or use your phone’s camera app.'}
+ const v=$('#v');v.srcObject=stream;await v.play();const det='BarcodeDetector' in window?new BarcodeDetector({formats:['qr_code']}):null;
+ if(!det)try{await loadJsQR()}catch{return $('#sm').textContent='Scanner could not load. Use your phone’s camera app.'}
+ const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});$('#sm').textContent='Point the camera at the QR code on the screen.';
+ timer=setInterval(async()=>{let val;if(det)val=(await det.detect(v).catch(()=>[]))[0]?.rawValue;else if(v.videoWidth){cv.width=v.videoWidth;cv.height=v.videoHeight;cx.drawImage(v,0,0);val=jsQR(cx.getImageData(0,0,cv.width,cv.height).data,cv.width,cv.height)?.data}
+  if(!val||!val.includes('/a/'))return;clearInterval(timer);const t=val.split('/a/')[1];
+  try{const r=await api('/api/s/attend','POST',{t});toast(r.message)}catch{}stopScan();load()},350)}
+$('#sd').addEventListener('close',()=>{clearInterval(timer);stream?.getTracks().forEach(t=>t.stop())});
+load();
+</script></body></html>

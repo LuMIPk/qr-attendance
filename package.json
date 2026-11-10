@@ -1,0 +1,7 @@
+{
+  "name": "qr-attendance",
+  "version": "2.0.0",
+  "description": "EF101-P10 QR-based student attendance system",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.21.0", "qrcode": "^1.5.4" }
+}

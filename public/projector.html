@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Projector – QR Attendance</title><link rel="stylesheet" href="/style.css">
+<style>body{background:#0b1020;color:#f2f5fb;min-height:100vh;display:grid;place-items:center}.p{display:grid;grid-template-columns:auto minmax(260px,420px);gap:40px;align-items:center;padding:24px;max-width:1100px}
+#qr{width:min(70vh,520px);max-width:90vw;aspect-ratio:1;background:#fff;border-radius:14px}.cnt{font-size:5rem;font-weight:700;line-height:1}.pm{color:#9aa7c2}.pbar{height:6px;background:#26314d;border-radius:3px;margin:12px 0 20px}.pbar i{display:block;height:100%;background:#6b93ff;border-radius:3px}
+.p button{background:#1b2541;color:#f2f5fb;border:1px solid #33425f}ul{padding:0;list-style:none;margin:16px 0;color:#9aa7c2}li b{color:#f2f5fb;font-weight:600}@media(max-width:800px){.p{grid-template-columns:1fr}}</style></head><body>
+<div class="p"><img id="qr" alt="Rotating attendance QR code"><div><h1 id="c" style="font-size:1.6rem"></h1><p id="d" class="pm" style="margin:4px 0 0"></p>
+<div class="pbar" aria-hidden="true"><i id="pb" style="width:100%"></i></div><div class="cnt"><span id="n">0</span><span class="pm" style="font-size:2rem"> / <span id="tot">0</span></span></div><p class="pm" style="margin:2px 0 0">students present</p>
+<p id="cl" class="pm hide">Session closed. Scanning is disabled.</p><ul id="rec"></ul><div class="row"><button id="tg" type="button"></button><button id="fs" type="button">Full screen</button></div></div></div>
+<script src="/common.js"></script><script>
+const sid=new URLSearchParams(location.search).get('sid');let end=0,win=20000,closed=false,busy=false;
+async function poll(){if(busy)return;busy=true;try{const j=await api(`/api/t/sessions/${sid}/live`);end=Date.now()+j.left;win=j.win;closed=j.closed;
+ if($('#qr').dataset.k!==j.qr.slice(-40)){$('#qr').src=j.qr;$('#qr').dataset.k=j.qr.slice(-40)}
+ $('#c').textContent=`${j.code} – ${j.name}`;$('#d').textContent=`${j.date}, ${j.start}–${j.end}`;$('#n').textContent=j.present;$('#tot').textContent=j.total;
+ $('#qr').style.opacity=closed?.15:1;$('#cl').classList.toggle('hide',!closed);$('#tg').textContent=closed?'Reopen session':'Close session';
+ $('#rec').innerHTML=j.recent.map(r=>`<li><b>${esc(r.name)}</b> ${esc(r.roll)} ${r.status==='Late'?'(late)':''}</li>`).join('')}catch{}busy=false}
+setInterval(()=>{const l=Math.max(0,end-Date.now());$('#pb').style.width=(l/win*100)+'%';if(l===0&&!busy)poll()},250);setInterval(poll,2000);poll();
+$('#tg').onclick=act(async()=>{await api(`/api/t/sessions/${sid}/closed`,'POST',{closed:!closed});poll()});
+$('#fs').onclick=()=>document.documentElement.requestFullscreen?.();
+</script></body></html>

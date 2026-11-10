@@ -1,0 +1,101 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Teacher – QR Attendance</title><link rel="stylesheet" href="/style.css"></head><body>
+<header class="top"><h1>Teacher dashboard</h1><label class="inl">Class<select id="course" aria-label="Selected class"></select></label><button class="alt" onclick="logout()">Log out</button></header>
+<main>
+<nav class="tabs" id="tabs"><button data-t="classes" class="on">Manage classes</button><button data-t="sessions">Attendance sessions</button><button data-t="reports">Reports</button><button data-t="alerts">Proxy alerts<span id="fc" class="badge hide"></span></button></nav>
+
+<div id="classes">
+<section><h2 id="cft">New class</h2><form class="row" id="cf">
+<label>Code<input id="ccode" required placeholder="EE-101" size="8"></label><label>Name<input id="cname" required placeholder="Basics of Electrical Engineering" size="30"></label>
+<label>Day<select id="cday"><option></option><option>Mon</option><option>Tue</option><option>Wed</option><option>Thu</option><option>Fri</option><option>Sat</option></select></label>
+<label>Start<input type="time" id="cst"></label><label>End<input type="time" id="cen"></label><label>Room<input id="croom" size="8"></label>
+<button id="cbtn">Create class</button><button type="button" class="alt hide" id="ccancel">Cancel</button></form></section>
+<section><h2>All classes</h2><div class="wrap"><table><thead><tr><th>Class</th><th>Timing</th><th>Students</th><th>Sessions</th><th></th></tr></thead><tbody id="clist"></tbody></table></div></section>
+<section><h2>Students in selected class</h2><p class="mute" style="margin:0 0 8px">One per line: <code>EE-26001, Student name</code>. The last three digits must be unique to each student.</p>
+<textarea id="stext" rows="4" style="width:100%" placeholder="EE-26001, Ayesha Khan&#10;EE-26002, Bilal Ahmed"></textarea><p><button id="sadd">Add students</button></p>
+<div class="wrap"><table><thead><tr><th>Roll</th><th>Name</th><th></th></tr></thead><tbody id="slist"></tbody></table></div></section></div>
+
+<div id="sessions" class="hide">
+<section><h2>Start a session</h2><form class="row" id="sf"><label>Date<input type="date" id="sdate" required></label><label>Start<input type="time" id="sstart" required></label><label>End<input type="time" id="send" required></label><button>Create session</button></form>
+<p class="mute" style="margin:8px 0 0">Times are pre-filled from the class timing. The QR code rotates every 20 seconds, so show it on the projector.</p></section>
+<section id="detail" class="hide"></section>
+<section><h2>Sessions</h2><div class="row" style="margin-bottom:8px"><label>From<input type="date" id="sfrom"></label><label>To<input type="date" id="sto"></label><button class="alt" id="sfilter">Filter</button></div>
+<div class="wrap"><table><thead><tr><th>Date</th><th>Time</th><th>Present</th><th>Status</th></tr></thead><tbody id="slistS"></tbody></table></div></section></div>
+
+<div id="reports" class="hide">
+<section><h2>Report</h2><div class="row"><label>From<input type="date" id="rfrom"></label><label>To<input type="date" id="rto"></label><button id="rgo">Show</button><button class="alt" id="rexp">Export CSV (Excel)</button></div><div id="rsum"></div></section>
+<section><h2>Attendance trend</h2><div id="rtrend"></div></section>
+<section><h2>By session</h2><div class="wrap"><table><thead><tr><th>Date</th><th>Present</th><th>Absent</th><th>%</th><th></th></tr></thead><tbody id="rsess"></tbody></table></div></section>
+<section><h2>By student</h2><p class="mute" style="margin:0 0 8px">Red = below 75%. Click a student for their history.</p><div class="wrap"><table><thead><tr><th>Roll</th><th>Name</th><th>Present</th><th>Sessions</th><th>%</th><th></th></tr></thead><tbody id="rstud"></tbody></table></div></section></div>
+
+<div id="alerts" class="hide"><section><h2>Proxy alerts</h2><p class="mute" style="margin:0 0 8px">Logged when one phone tries to mark attendance for a second student in the same session.</p>
+<div class="wrap"><table><thead><tr><th>When</th><th>Session</th><th>Blocked student</th><th>Phone already used by</th></tr></thead><tbody id="flist"></tbody></table></div></section></div>
+</main>
+<dialog id="cd"><h2>Student PINs</h2><p class="mute" style="margin:0 0 8px">Shown once. Give each student their PIN, or download the list. You can reset a PIN later.</p><div class="wrap" style="max-height:50vh"><table><thead><tr><th>Roll</th><th>Name</th><th>PIN</th></tr></thead><tbody id="cb"></tbody></table></div>
+<p class="row"><button id="cdl" type="button">Download CSV</button><button class="alt" type="button" onclick="print()">Print</button><button class="alt" type="button" onclick="$('#cd').close()">Close</button></p></dialog>
+<dialog id="hd"><h2 id="ht"></h2><div class="wrap" style="max-height:55vh"><table><thead><tr><th>Date</th><th>Time</th><th>Status</th></tr></thead><tbody id="hb"></tbody></table></div><p><button class="alt" onclick="$('#hd').close()">Close</button></p></dialog>
+<script src="/common.js"></script><script>
+let cid=null,courses=[],editId=null,cur=null;
+const C=()=>courses.find(c=>c.id==cid),sel=()=>$('#course');
+$('#sdate').value=new Date().toLocaleDateString('en-CA');
+api('/api/me').then(m=>{if(m.role!=='teacher')location.href='/'});
+
+$$('#tabs button').forEach(b=>b.onclick=()=>{$$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));['classes','sessions','reports','alerts'].forEach(t=>$('#'+t).classList.toggle('hide',t!==b.dataset.t));
+  if(b.dataset.t==='reports')loadReport();if(b.dataset.t==='alerts')loadFlags()});
+
+async function loadCourses(keep){courses=await api('/api/t/courses');sel().innerHTML=courses.map(c=>`<option value="${c.id}">${esc(c.code)} – ${esc(c.name)}</option>`).join('');
+  if(keep&&courses.some(c=>c.id==keep))sel().value=keep;cid=sel().value||null;
+  $('#clist').innerHTML=courses.map(c=>`<tr><td><b>${esc(c.code)}</b><br>${esc(c.name)}</td><td>${esc(timing(c))}</td><td>${c.students}</td><td>${c.sessions}</td><td style="white-space:nowrap"><button class="alt sm" onclick="editCourse(${c.id})">Edit</button> <button class="danger sm" onclick="delCourse(${c.id})">Delete</button></td></tr>`).join('')||'<tr><td colspan=5>No classes yet. Create one above.</td></tr>';
+  refresh()}
+function refresh(){const c=C();if(!c){$('#slist').innerHTML='';$('#slistS').innerHTML='';return}$('#sstart').value=c.start_time||'';$('#send').value=c.end_time||'';loadStudents();loadSessions();loadFlags(true)}
+sel().onchange=()=>{cid=sel().value;$('#detail').classList.add('hide');refresh();if(!$('#reports').classList.contains('hide'))loadReport()};
+
+$('#cf').onsubmit=act(async()=>{const b={code:$('#ccode').value,name:$('#cname').value,day:$('#cday').value,start_time:$('#cst').value,end_time:$('#cen').value,room:$('#croom').value};
+  if(editId){await api('/api/t/courses/'+editId,'PUT',b);toast('Class updated')}else{const r=await api('/api/t/courses','POST',b);editId=null;toast('Class created');await loadCourses(r.id);resetForm();return}
+  const k=editId;resetForm();await loadCourses(k)});
+function resetForm(){editId=null;$('#cf').reset();$('#cft').textContent='New class';$('#cbtn').textContent='Create class';$('#ccancel').classList.add('hide')}
+$('#ccancel').onclick=resetForm;
+window.editCourse=id=>{const c=courses.find(x=>x.id===id);editId=id;$('#ccode').value=c.code;$('#cname').value=c.name;$('#cday').value=c.day||'';$('#cst').value=c.start_time||'';$('#cen').value=c.end_time||'';$('#croom').value=c.room||'';
+  $('#cft').textContent='Edit '+c.code;$('#cbtn').textContent='Save changes';$('#ccancel').classList.remove('hide');scrollTo({top:0,behavior:'smooth'})};
+window.delCourse=id=>act(async()=>{if(!confirm('Delete this class with all its sessions and attendance records?'))return;await api('/api/t/courses/'+id,'DELETE');toast('Class deleted');await loadCourses()})();
+
+async function loadStudents(){const s=await api(`/api/t/courses/${cid}/students`);
+  $('#slist').innerHTML=s.map(x=>`<tr><td>${esc(x.roll)}</td><td>${esc(x.name)}</td><td style="white-space:nowrap"><button class="alt sm" onclick="renameSt('${x.roll}','${esc(x.name).replace(/'/g,'’')}')">Rename</button> <button class="alt sm" onclick="resetPin('${x.roll}','${esc(x.name).replace(/'/g,'’')}')">Reset PIN</button> <button class="danger sm" onclick="rmSt('${x.roll}')">Remove</button></td></tr>`).join('')||'<tr><td colspan=3>No students yet.</td></tr>'}
+function creds(rows){$('#cb').innerHTML=rows.map(r=>`<tr><td>${esc(r.roll)}</td><td>${esc(r.name)}</td><td><b>${r.pin??'(unchanged)'}</b></td></tr>`).join('');
+  $('#cdl').onclick=()=>download('student-pins.csv','Roll,Name,PIN\r\n'+rows.filter(r=>r.pin).map(r=>`${r.roll},"${r.name}",${r.pin}`).join('\r\n'));$('#cd').showModal()}
+$('#sadd').onclick=act(async()=>{if(!cid)return toast('Create a class first');const r=await api(`/api/t/courses/${cid}/students`,'POST',{text:$('#stext').value});
+  if(r.errors.length)alert('Not added:\n\n'+r.errors.join('\n'));if(r.added.length){$('#stext').value='';creds(r.added)}await loadCourses(cid)});
+window.resetPin=(roll,name)=>act(async()=>{if(!confirm('Reset PIN for '+name+'?'))return;const r=await api(`/api/t/students/${roll}/pin`,'POST');creds([{roll,name,pin:r.pin}])})();
+window.renameSt=(roll,name)=>act(async()=>{const n=prompt('New name for '+roll,name);if(!n)return;await api('/api/t/students/'+roll,'PUT',{name:n});loadStudents()})();
+window.rmSt=roll=>act(async()=>{if(!confirm('Remove '+roll+' from this class?'))return;await api(`/api/t/courses/${cid}/students/${roll}`,'DELETE');await loadCourses(cid)})();
+
+$('#sf').onsubmit=act(async()=>{if(!cid)return toast('Create a class first');const r=await api('/api/t/sessions','POST',{course_id:cid,date:$('#sdate').value,start_time:$('#sstart').value,end_time:$('#send').value});await loadSessions();openSession(r.id)});
+$('#sfilter').onclick=act(loadSessions);
+async function loadSessions(){if(!cid)return;const s=await api(`/api/t/sessions?course_id=${cid}&from=${$('#sfrom').value}&to=${$('#sto').value}`);
+  $('#slistS').innerHTML=s.map(x=>`<tr class="click" onclick="openSession(${x.id})"><td>${x.date}</td><td>${x.start_time}–${x.end_time}</td><td>${x.present}/${x.total}</td><td>${x.closed?'Closed':'<span class="chip ok">Open</span>'}</td></tr>`).join('')||'<tr><td colspan=4>No sessions in this range.</td></tr>'}
+async function openSession(id){const s=await api('/api/t/sessions/'+id);cur=id;const d=$('#detail');d.classList.remove('hide');
+  d.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(s.code)} · ${s.date} ${s.start_time}–${s.end_time} ${s.closed?'<span class="chip bad">Closed</span>':'<span class="chip ok">Open</span>'}</h2>
+  <div class="row"><button onclick="window.open('/projector.html?sid=${id}','_blank')">Show QR on projector</button><button class="alt" onclick="setClosed(${!s.closed})">${s.closed?'Reopen':'Close session'}</button></div></div>
+  <div class="stats"><div><b>${s.stats.present}</b><span>Present</span></div><div><b>${s.stats.absent}</b><span>Absent</span></div><div><b>${s.stats.pct}%</b><span>Attendance</span></div></div>
+  ${s.flags.length?`<p class="chip bad">${s.flags.length} proxy attempt(s) blocked in this session</p>`:''}
+  <div class="row" style="margin:8px 0"><label>Mark manually (roll number)<input id="mroll" placeholder="EE-26001"></label><button class="alt" onclick="mark()">Mark present</button><button class="alt" onclick="openSession(${id})">Refresh</button></div>
+  <div class="wrap"><table><thead><tr><th>Roll</th><th>Name</th><th>Status</th><th>Time</th><th></th></tr></thead><tbody>${s.rows.map(r=>`<tr><td>${esc(r.roll)}</td><td>${esc(r.name)}</td><td class="${r.status}">${r.status}${r.method==='manual'?' (manual)':''}</td><td>${dt(r.timestamp)}</td><td>${r.status!=='Absent'?`<button class="alt sm" onclick="unmark('${r.roll}')">Undo</button>`:''}</td></tr>`).join('')}</tbody></table></div>`;
+  d.scrollIntoView({behavior:'smooth'})}
+window.setClosed=c=>act(async()=>{await api(`/api/t/sessions/${cur}/closed`,'POST',{closed:c});openSession(cur);loadSessions()})();
+window.mark=act(async()=>{await api(`/api/t/sessions/${cur}/mark`,'POST',{roll:$('#mroll').value});openSession(cur);loadSessions()});
+window.unmark=r=>act(async()=>{await api(`/api/t/sessions/${cur}/mark/${r}`,'DELETE');openSession(cur);loadSessions()})();
+
+const rq=()=>`course_id=${cid}&from=${$('#rfrom').value}&to=${$('#rto').value}`;
+$('#rgo').onclick=act(loadReport);$('#rexp').onclick=()=>cid?location.href='/api/t/export?'+rq():toast('Create a class first');
+async function loadReport(){if(!cid)return;const r=await api('/api/t/report?'+rq());
+  const avg=r.sessions.length?(r.sessions.reduce((a,s)=>a+s.pct,0)/r.sessions.length).toFixed(1):0,low=r.students.filter(s=>r.sessions.length&&s.pct<75).length;
+  $('#rsum').innerHTML=`<div class="stats"><div><b>${r.sessions.length}</b><span>Sessions</span></div><div><b>${r.students.length}</b><span>Students</span></div><div><b>${avg}%</b><span>Average attendance</span></div><div><b style="color:${low?'var(--bad)':'inherit'}">${low}</b><span>Below 75%</span></div></div>`;
+  $('#rtrend').innerHTML=trend(r.sessions.map(s=>s.pct));
+  $('#rsess').innerHTML=r.sessions.map(s=>`<tr><td>${s.date} ${s.start_time}</td><td>${s.present}</td><td>${s.absent}</td><td>${s.pct}%</td><td>${bar(s.pct)}</td></tr>`).join('')||'<tr><td colspan=5>No sessions in this range.</td></tr>';
+  $('#rstud').innerHTML=r.students.map(s=>`<tr class="click" onclick="stHist('${s.roll}','${esc(s.name).replace(/'/g,'’')}')"><td>${esc(s.roll)}</td><td>${esc(s.name)}</td><td>${s.present}</td><td>${s.total}</td><td class="${s.total&&s.pct<75?'A':''}">${s.pct}%</td><td>${bar(s.pct)}</td></tr>`).join('')||'<tr><td colspan=6>No students.</td></tr>'}
+window.stHist=(roll,name)=>act(async()=>{const h=await api(`/api/t/history?course_id=${cid}&roll=${roll}`);$('#ht').textContent=`${roll} ${name}`;
+  $('#hb').innerHTML=h.map(r=>`<tr><td>${r.date}</td><td>${r.start_time}</td><td class="${r.status}">${r.status}</td></tr>`).join('')||'<tr><td colspan=3>No sessions yet.</td></tr>';$('#hd').showModal()})();
+
+async function loadFlags(quiet){if(!cid)return;const f=await api('/api/t/flags?course_id='+cid);$('#fc').textContent=f.length;$('#fc').classList.toggle('hide',!f.length);
+  $('#flist').innerHTML=f.map(x=>`<tr><td>${dt(x.timestamp)}</td><td>${x.date} ${x.start_time}</td><td><b>${esc(x.roll)}</b> ${esc(x.name)}</td><td>${x.broll?`<b>${esc(x.broll)}</b> ${esc(x.bname)}`:''}</td></tr>`).join('')||'<tr><td colspan=4>No proxy attempts detected.</td></tr>'}
+loadCourses();
+</script></body></html>

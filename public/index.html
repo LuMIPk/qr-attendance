@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR Attendance – Sign in</title><link rel="stylesheet" href="/style.css"></head><body>
+<div class="login"><h1>QR Attendance</h1><p class="mute" style="margin:0 0 20px">Sign in to continue.</p>
+<div class="seg" role="tablist"><button id="bt" class="on" type="button">Teacher</button><button id="bs" type="button">Student</button></div>
+<form id="ft"><label>Password<input id="pw" type="password" autocomplete="current-password" required></label><button>Sign in as teacher</button></form>
+<form id="fs" class="hide"><label>Roll number<input id="roll" placeholder="EE-26123" autocapitalize="characters" autocomplete="username" required></label><label>PIN<input id="pin" type="password" inputmode="numeric" autocomplete="current-password" required></label><button>Sign in as student</button><p class="mute" style="margin:0;font-size:.85rem">Your teacher gives you your PIN.</p></form></div>
+<script src="/common.js"></script><script>
+const next=new URLSearchParams(location.search).get('next');
+fetch('/api/me').then(r=>r.ok&&r.json()).then(m=>{if(m)location.href=next&&m.role==='student'?next:m.role==='teacher'?'/teacher.html':'/student.html'});
+function pick(t){$('#bt').classList.toggle('on',t);$('#bs').classList.toggle('on',!t);$('#ft').classList.toggle('hide',!t);$('#fs').classList.toggle('hide',t)}
+$('#bt').onclick=()=>pick(true);$('#bs').onclick=()=>pick(false);if(next||location.hash==='#student')pick(false);
+$('#ft').onsubmit=act(async()=>{await api('/api/login','POST',{role:'teacher',password:$('#pw').value});location.href='/teacher.html'});
+$('#fs').onsubmit=act(async()=>{await api('/api/login','POST',{role:'student',roll:$('#roll').value,pin:$('#pin').value});location.href=next||'/student.html'});
+</script></body></html>
